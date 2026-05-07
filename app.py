@@ -39,7 +39,7 @@ IS_ADMIN = (st.session_state['role'] == "Admin")
 # 1. CẤU HÌNH KẾT NỐI GOOGLE SHEETS
 # ==========================================
 # THAY LINK DƯỚI ĐÂY BẰNG LINK GOOGLE SHEET CỦA BẠN (Đã bật Anyone with link can view)
-SHEET_URL = "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID_HERE/edit#gid=0"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1lvAwM19oi6cTuB0LbBpS3H_m1bSqfQpfwexMrOU1tqQ/edit#gid=0"
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
