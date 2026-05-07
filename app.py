@@ -13,7 +13,7 @@ st.set_page_config(page_title="Hệ Sinh Thái Quản Lý Trọ", layout="wide",
 # Bạn có thể đổi mật khẩu ở đây
 USERS = {
     "admin": {"password": "123", "role": "Admin", "name": "Chủ Trọ (Bạn)"},
-    "admin": {"password": "6789", "role": "Viewer", "name": "Cổ Đông (Đối tác)"}
+    "doitac": {"password": "456", "role": "Viewer", "name": "Cổ Đông (Đối tác)"}
 }
 
 # Khởi tạo session state cho Đăng nhập
@@ -238,42 +238,92 @@ if menu == "1. Quản lý Phòng & Tính tiền":
 # =====================================================================
 # MENU 2: KIỂM SOÁT THÀNH VIÊN
 # =====================================================================
+# =====================================================================
+# MENU 2: KIỂM SOÁT THÀNH VIÊN (ĐÃ FIX)
+# =====================================================================
 elif menu == "2. Kiểm soát Thành viên":
     st.title("👥 Quản Lý Nhân Khẩu")
-    thang_thuc_te = f"{current_month}/{current_year}"
-    df_phong_thue = pd.read_sql_query(f"SELECT phong, khach_thue FROM phong_tro WHERE thang_nam = '{thang_thuc_te}' AND trang_thai='Đã thuê' ORDER BY phong", conn)
     
-    if df_phong_thue.empty: st.info("Chưa có phòng cho thuê.")
+    # Lấy tháng hiện tại để truy vấn chủ hợp đồng
+    thang_hien_tai = f"{current_month}/{current_year}"
+    df_phong_thue = pd.read_sql_query(f"SELECT phong, khach_thue FROM phong_tro WHERE thang_nam = '{thang_hien_tai}' AND trang_thai='Đã thuê' ORDER BY phong", conn)
+    
+    if df_phong_thue.empty: 
+        st.info("Chưa có phòng nào đang thuê trong tháng này để quản lý thành viên.")
     else:
         col1, col2 = st.columns([1, 2.5])
+        
         with col1:
             phong_tv = st.selectbox("Chọn Phòng:", df_phong_thue['phong'].tolist())
+            # Lấy tên chủ hợp đồng từ dataframe đã query ở trên
+            ten_chu_hd = df_phong_thue[df_phong_thue['phong'] == phong_tv]['khach_thue'].values[0]
+            
             if IS_ADMIN:
                 st.markdown("---")
                 with st.form("them_tv"):
                     st.write("**➕ Thêm Người ở ghép**")
-                    t_ten, t_cccd, t_sdt = st.text_input("Tên"), st.text_input("CCCD"), st.text_input("SĐT")
+                    t_ten = st.text_input("Tên")
+                    t_cccd = st.text_input("CCCD")
+                    t_sdt = st.text_input("SĐT")
                     if st.form_submit_button("Lưu người mới") and t_ten:
-                        c.execute('''INSERT INTO thanh_vien (phong, ten, vai_tro, cccd, sdt, que_quan) VALUES (?, ?, ?, ?, ?, ?)''', (phong_tv, t_ten, '👤 Người ở ghép', t_cccd, t_sdt, ''))
-                        conn.commit(); st.rerun()
+                        c.execute('''INSERT INTO thanh_vien (phong, ten, vai_tro, cccd, sdt, que_quan) VALUES (?, ?, ?, ?, ?, ?)''', 
+                                  (phong_tv, t_ten, '👤 Người ở ghép', t_cccd, t_sdt, ''))
+                        conn.commit()
+                        st.success("Đã thêm thành viên!")
+                        st.rerun()
+        
         with col2:
             st.write(f"**Danh sách người ở Phòng {phong_tv}**")
-            df_tv = load_thanh_vien(phong_tv)
+            
+            # 1. Tạo DataFrame cho Chủ Hợp Đồng (lấy từ bảng phong_tro)
+            data_chu_hd = {
+                "id": [0], # ID ảo
+                "ten": [ten_chu_hd if ten_chu_hd else "Chưa cập nhật"],
+                "vai_tro": ["👑 Chủ Hợp Đồng"],
+                "cccd": ["Xem ở HĐ"],
+                "sdt": ["-"],
+                "que_quan": ["-"]
+            }
+            df_chu = pd.DataFrame(data_chu_hd)
+            
+            # 2. Lấy danh sách thành viên ở ghép từ bảng thanh_vien
+            df_tv_db = load_thanh_vien(phong_tv)
+            
+            # Kết hợp cả hai để hiển thị
+            df_full = pd.concat([df_chu, df_tv_db], ignore_index=True)
+            
             if IS_ADMIN:
-                st.info("💡 Bảng tương tác: Nhấn đúp để sửa. Tích vào 'Xóa' để xóa người ở ghép.")
-                if not df_tv.empty:
-                    df_edit_tv = df_tv.copy(); df_edit_tv['Xóa'] = False
-                    edited_tv = st.data_editor(df_edit_tv, column_config={"id": None, "phong": None, "ten": st.column_config.TextColumn("Họ Tên", disabled=True), "vai_tro": st.column_config.TextColumn("Vai Trò", disabled=True), "Xóa": st.column_config.CheckboxColumn("🗑 Xóa", default=False)}, hide_index=True, use_container_width=True)
-                    if st.button("💾 LƯU THAY ĐỔI", type="primary"):
-                        for _, r in edited_tv.iterrows():
-                            if r['Xóa'] and r['vai_tro'] != '👑 Chủ Hợp Đồng': c.execute(f"DELETE FROM thanh_vien WHERE id = {r['id']}")
-                            elif not r['Xóa']: c.execute('''UPDATE thanh_vien SET cccd=?, sdt=?, que_quan=? WHERE id=?''', (r['cccd'], r['sdt'], r['que_quan'], r['id']))
-                        conn.commit(); st.rerun()
+                st.info("💡 Bạn có thể sửa trực tiếp CCCD/SĐT/Quê quán của người ở ghép bên dưới.")
+                # Chỉ cho phép edit những dòng không phải Chủ hợp đồng (id != 0)
+                df_edit_tv = df_full.copy()
+                df_edit_tv['Xóa'] = False
+                
+                edited_tv = st.data_editor(
+                    df_edit_tv, 
+                    column_config={
+                        "id": None, 
+                        "ten": st.column_config.TextColumn("Họ Tên", disabled=True), 
+                        "vai_tro": st.column_config.TextColumn("Vai Trò", disabled=True), 
+                        "Xóa": st.column_config.CheckboxColumn("🗑 Xóa", default=False)
+                    }, 
+                    hide_index=True, 
+                    use_container_width=True
+                )
+                
+                if st.button("💾 LƯU THAY ĐỔI", type="primary"):
+                    for _, r in edited_tv.iterrows():
+                        if r['id'] != 0: # Không tác động đến dòng Chủ HĐ ảo
+                            if r['Xóa']: 
+                                c.execute(f"DELETE FROM thanh_vien WHERE id = {r['id']}")
+                            else: 
+                                c.execute('''UPDATE thanh_vien SET cccd=?, sdt=?, que_quan=? WHERE id=?''', 
+                                          (r['cccd'], r['sdt'], r['que_quan'], r['id']))
+                    conn.commit()
+                    st.success("Đã cập nhật dữ liệu!")
+                    st.rerun()
             else:
-                # Đối tác chỉ được xem bảng DataFrame tĩnh
-                if not df_tv.empty:
-                    st.dataframe(df_tv.drop(columns=['id', 'phong']), use_container_width=True, hide_index=True)
-
+                # Đối tác chỉ được xem
+                st.dataframe(df_full.drop(columns=['id']), use_container_width=True, hide_index=True)
 # =====================================================================
 # MENU 3: QUẢN LÝ BẢO TRÌ
 # =====================================================================
