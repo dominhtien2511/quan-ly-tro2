@@ -181,6 +181,22 @@ if menu == "1. Quản lý Phòng & Tính tiền":
                 conn.commit(); st.rerun()
 
     if not df_thang_nay.empty:
+        # --- PHẦN THỐNG KÊ DASHBOARD CHUYÊN NGHIỆP ---
+        total_rooms = len(df_thang_nay)
+        rented_rooms = len(df_thang_nay[df_thang_nay["trang_thai"] == "Đã thuê"])
+        vacant_rooms = len(df_thang_nay[df_thang_nay["trang_thai"] == "Trống"])
+        paid_rooms = len(df_thang_nay[df_thang_nay["thanh_toan"] == "Đã thanh toán"])
+        unpaid_rooms = rented_rooms - paid_rooms
+        occupancy_rate = (rented_rooms / total_rooms * 100) if total_rooms > 0 else 0
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("🏠 Tổng số phòng", total_rooms)
+        m2.metric("✅ Đã thuê", f"{rented_rooms} ({occupancy_rate:.0f}%)", delta=f"{rented_rooms}/{total_rooms}")
+        m3.metric("🚪 Còn trống", vacant_rooms, delta_color="inverse")
+        m4.metric("💰 Tình trạng thu", f"{paid_rooms} Đã thu", delta=f"{unpaid_rooms} Chưa thu", delta_color="inverse" if unpaid_rooms > 0 else "normal")
+        st.markdown("---")
+
+        # Bảng chỉnh sửa trực tiếp
         df_display = df_thang_nay.sort_values(by='phong').copy()
         if IS_ADMIN:
             st.info("💡 Sửa nhanh trực tiếp trên bảng và nhấn 'Lưu Thay Đổi Bảng'.")
@@ -242,7 +258,6 @@ if menu == "1. Quản lý Phòng & Tính tiền":
                     s_dien, s_nuoc = bill['e'] - int(r_data["dien_cu"]), bill['w'] - int(r_data["nuoc_cu"])
                     tong = int(r_data["gia"]) + (s_dien * GIA_DIEN) + (s_nuoc * GIA_NUOC) + bill['f']
                     
-                    # CẬP NHẬT: Thêm tên khách hàng vào tiêu đề hóa đơn
                     st.success(f"HÓA ĐƠN P.{selected_room} {r_data['khach_thue']}")
                     col_t, col_q = st.columns([1.5, 1])
                     with col_t:
@@ -308,7 +323,7 @@ elif menu == "2. Kiểm soát Thành viên":
                         if row['Xóa']: c.execute("DELETE FROM thanh_vien WHERE id=?", (int(row['id']),))
                         else: c.execute("UPDATE thanh_vien SET ten=?, ngay_sinh=?, cccd=?, que_quan=? WHERE id=?", (row['Họ tên'], row['Ngày sinh'], row['CCCD'], row['Quê quán'], int(row['id'])))
                     conn.commit(); st.rerun()
-            else: st.dataframe(df_tv.drop(columns=['id']), column_config={"Mặt trước": st.column_config.ImageColumn(), "Mặt sau": st.column_config.ImageColumn()}, hide_index=True)
+            else: st.dataframe(df_tv.drop(columns=['id']), hide_index=True)
 
 # =====================================================================
 # MENU 3: QUẢN LÝ BẢO TRÌ
@@ -415,7 +430,6 @@ elif menu == "4. Báo Cáo Tài Chính Tháng":
 # =====================================================================
 elif menu == "5. Báo Cáo Tài Chính Năm":
     nam_n = st.selectbox("📅 Chọn Năm:", danh_sach_nam, index=danh_sach_nam.index(str(current_year)))
-    
     y_thu_nha, y_thu_dien, y_thu_nuoc, y_thu_dv = 0, 0, 0, 0
     y_chi_dien, y_chi_nuoc, y_chi_dv, y_chi_sua, y_chi_khac = 0, 0, 0, 0, 0
     data_nam_detailed = []
@@ -423,7 +437,6 @@ elif menu == "5. Báo Cáo Tài Chính Năm":
     for t in range(1, 13):
         ts = f"{str(t).zfill(2)}/{nam_n}"
         df_p, df_c = load_phong(ts), load_chi_phi(ts)
-        
         df_p_paid = df_p[df_p['thanh_toan'] == 'Đã thanh toán']
         m_thu_nha = df_p_paid['gia'].sum()
         m_thu_dien = sum([(max(0, r['dien_moi']-r['dien_cu']) * GIA_DIEN) for _, r in df_p_paid.iterrows()])
