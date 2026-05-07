@@ -13,7 +13,7 @@ st.set_page_config(page_title="Hệ Sinh Thái Quản Lý Trọ", layout="wide",
 # Bạn có thể đổi mật khẩu ở đây
 USERS = {
     "admin": {"password": "123", "role": "Admin", "name": "Chủ Trọ (Bạn)"},
-    "doitac": {"password": "456", "role": "Viewer", "name": "Cổ Đông (Đối tác)"}
+    "admin": {"password": "6789", "role": "Viewer", "name": "Cổ Đông (Đối tác)"}
 }
 
 # Khởi tạo session state cho Đăng nhập
