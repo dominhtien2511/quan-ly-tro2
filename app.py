@@ -110,9 +110,10 @@ def tinh_thang_truoc(thang_nam_hien_tai):
     t, n = map(int, thang_nam_hien_tai.split('/'))
     return f"12/{n-1}" if t == 1 else f"{str(t-1).zfill(2)}/{n}"
 
-def tao_link_vietqr(ngan_hang, stk, so_tien, noi_dung):
+def tao_link_vietqr(ngan_hang, stk, so_tien, noi_dung, ten_chu_tk):
     noi_dung_encoded = urllib.parse.quote(noi_dung)
-    return f"https://img.vietqr.io/image/{ngan_hang}-{stk}-compact2.png?amount={so_tien}&addInfo={noi_dung_encoded}"
+    ten_encoded = urllib.parse.quote(ten_chu_tk)
+    return f"https://img.vietqr.io/image/{ngan_hang}-{stk}-compact2.png?amount={so_tien}&addInfo={noi_dung_encoded}&accountName={ten_encoded}"
 
 # ==========================================
 # 2. MENU SIDEBAR
@@ -241,13 +242,15 @@ if menu == "1. Quản lý Phòng & Tính tiền":
                     s_dien, s_nuoc = bill['e'] - int(r_data["dien_cu"]), bill['w'] - int(r_data["nuoc_cu"])
                     tong = int(r_data["gia"]) + (s_dien * GIA_DIEN) + (s_nuoc * GIA_NUOC) + bill['f']
                     
-                    st.success(f"HÓA ĐƠN P.{selected_room}")
+                    # CẬP NHẬT: Thêm tên khách hàng vào tiêu đề hóa đơn
+                    st.success(f"HÓA ĐƠN P.{selected_room} {r_data['khach_thue']}")
                     col_t, col_q = st.columns([1.5, 1])
                     with col_t:
                         st.code(f"Tiền nhà: {int(r_data['gia']):,} đ\nĐiện: {s_dien} x {GIA_DIEN:,} = {s_dien*GIA_DIEN:,} đ\nNước: {s_nuoc} x {GIA_NUOC:,} = {s_nuoc*GIA_NUOC:,} đ\nDịch vụ: {bill['f']:,} đ\n>> TỔNG: {tong:,} VNĐ")
                     with col_q:
                         if db_bank_id and db_bank_stk:
-                            st.image(tao_link_vietqr(db_bank_id, db_bank_stk, tong, f"P{selected_room} TT THANG {selected_month.replace('/','')}"), width=160)
+                            st.image(tao_link_vietqr(db_bank_id, db_bank_stk, tong, f"P{selected_room} TT THANG {selected_month.replace('/','')} {r_data['khach_thue']}", db_bank_user), width=160)
+                            st.caption(f"Tên: {db_bank_user}")
                     
                     st.markdown("### 💸 Bước 2: Xác nhận thu tiền")
                     with st.form("final_confirm_f"):
@@ -352,13 +355,12 @@ elif menu == "3. 🛠️ Quản lý Bảo Trì":
             else: st.dataframe(df_da.drop(columns=['id']), use_container_width=True, hide_index=True)
 
 # =====================================================================
-# MENU 4: BÁO CÁO TÀI CHÍNH THÁNG (CẬP NHẬT CHIA KHOẢN CỤ THỂ)
+# MENU 4: BÁO CÁO TÀI CHÍNH THÁNG
 # =====================================================================
 elif menu == "4. Báo Cáo Tài Chính Tháng":
     thang_tk = hien_thi_header_chot_ky("📊 Báo Cáo Tài Chính Tháng")
     df_dt = load_phong(thang_tk); df_chi = load_chi_phi(thang_tk)
     
-    # 1. TÍNH THU TỪ KHÁCH (CHỈ LẤY PHÒNG ĐÃ THANH TOÁN)
     thu_tien_nha, thu_dien, thu_nuoc, thu_dv = 0, 0, 0, 0
     if not df_dt.empty:
         df_paid = df_dt[df_dt['thanh_toan'] == 'Đã thanh toán']
@@ -367,7 +369,6 @@ elif menu == "4. Báo Cáo Tài Chính Tháng":
         thu_nuoc = sum([(max(0, r['nuoc_moi']-r['nuoc_cu']) * GIA_NUOC) for _, r in df_paid.iterrows()])
         thu_dv = df_paid['phi_dich_vu'].sum()
 
-    # 2. TÍNH CHI TÒA NHÀ (LẤY TỪ BẢNG CHI PHÍ)
     chi_dien, chi_nuoc, chi_dv, chi_sua, chi_khac = 0, 0, 0, 0, 0
     if not df_chi.empty:
         chi_dien = df_chi[df_chi['loai'] == 'Tiền Điện Toàn Nhà']['so_tien'].sum()
@@ -376,62 +377,86 @@ elif menu == "4. Báo Cáo Tài Chính Tháng":
         chi_sua = df_chi[df_chi['loai'] == 'Sửa chữa']['so_tien'].sum()
         chi_khac = df_chi[df_chi['loai'] == 'Khác']['so_tien'].sum()
 
-    # 3. HIỂN THỊ METRICS TỔNG QUÁT
-    t_thu = thu_tien_nha + thu_dien + thu_nuoc + thu_dv
-    t_chi = chi_dien + chi_nuoc + chi_dv + chi_sua + chi_khac
+    t_thu, t_chi = thu_tien_nha + thu_dien + thu_nuoc + thu_dv, chi_dien + chi_nuoc + chi_dv + chi_sua + chi_khac
     c1, c2, c3 = st.columns(3)
-    c1.metric("💰 TỔNG THU (Đã thu)", f"{t_thu:,.0f} đ")
-    c2.metric("💸 TỔNG CHI", f"{t_chi:,.0f} đ")
-    c3.metric("📈 LỢI NHUẬN THỰC", f"{t_thu - t_chi:,.0f} đ", delta_color="normal")
+    c1.metric("💰 TỔNG THU", f"{t_thu:,.0f} đ"); c2.metric("💸 TỔNG CHI", f"{t_chi:,.0f} đ"); c3.metric("📈 LỢI NHUẬN", f"{t_thu - t_chi:,.0f} đ")
 
     st.markdown("---")
-    st.subheader("🔍 So sánh Kiểm soát Dòng tiền")
-    
-    # BẢNG SO SÁNH CHI TIẾT
+    st.subheader("🔍 Chi Tiết Dòng Tiền")
     data_compare = [
-        {"Khoản mục": "🏡 Tiền Nhà Trọ", "Thu từ khách": f"{thu_tien_nha:,.0f}", "Chi tòa nhà": "-", "Chênh lệch": f"{thu_tien_nha:,.0f}"},
-        {"Khoản mục": "⚡ Tiền Điện", "Thu từ khách": f"{thu_dien:,.0f}", "Chi tòa nhà": f"{chi_dien:,.0f}", "Chênh lệch": f"{thu_dien - chi_dien:,.0f}"},
-        {"Khoản mục": "💧 Tiền Nước", "Thu từ khách": f"{thu_nuoc:,.0f}", "Chi tòa nhà": f"{chi_nuoc:,.0f}", "Chênh lệch": f"{thu_nuoc - chi_nuoc:,.0f}"},
-        {"Khoản mục": "🛠️ Phí Dịch Vụ / Khác", "Thu từ khách": f"{thu_dv:,.0f}", "Chi tòa nhà": f"{chi_dv + chi_khac:,.0f}", "Chênh lệch": f"{thu_dv - (chi_dv + chi_khac):,.0f}"},
-        {"Khoản mục": "🔨 Chi phí Sửa chữa", "Thu từ khách": "-", "Chi tòa nhà": f"{chi_sua:,.0f}", "Chênh lệch": f"{-chi_sua:,.0f}"},
+        {"Hạng mục": "🏡 Tiền Nhà", "Thu từ khách": f"{thu_tien_nha:,.0f}", "Chi tòa nhà": "-", "Chênh lệch": f"{thu_tien_nha:,.0f}"},
+        {"Hạng mục": "⚡ Điện", "Thu từ khách": f"{thu_dien:,.0f}", "Chi tòa nhà": f"{chi_dien:,.0f}", "Chênh lệch": f"{thu_dien - chi_dien:,.0f}"},
+        {"Hạng mục": "💧 Nước", "Thu từ khách": f"{thu_nuoc:,.0f}", "Chi tòa nhà": f"{chi_nuoc:,.0f}", "Chênh lệch": f"{thu_nuoc - chi_nuoc:,.0f}"},
+        {"Hạng mục": "🛠️ Phí DV / Khác", "Thu từ khách": f"{thu_dv:,.0f}", "Chi tòa nhà": f"{chi_dv + chi_khac:,.0f}", "Chênh lệch": f"{thu_dv - (chi_dv + chi_khac):,.0f}"},
+        {"Hạng mục": "🔨 Sửa chữa", "Thu từ khách": "-", "Chi tòa nhà": f"{chi_sua:,.0f}", "Chênh lệch": f"{-chi_sua:,.0f}"},
     ]
     st.table(pd.DataFrame(data_compare))
 
     st.markdown("---")
-    col_l, col_r = st.columns([1.5, 1])
-    with col_l:
-        st.subheader("📉 Quản lý Chi phí Tòa nhà")
-        if IS_ADMIN:
-            with st.expander("➕ Thêm khoản chi mới"):
-                with st.form("t_cp"):
-                    cl = st.selectbox("Loại", ["Tiền Điện Toàn Nhà", "Tiền Nước Toàn Nhà", "Rác", "Net", "Sửa chữa", "Khác"])
-                    ch, ct = st.text_input("Ghi chú"), st.number_input("Số tiền", step=50000)
-                    if st.form_submit_button("Lưu khoản chi"):
-                        c.execute('''INSERT INTO chi_phi (thang_nam, loai, hang_muc, so_tien, ngay_nhap) VALUES (?,?,?,?,?)''', (thang_tk, cl, ch, int(ct), datetime.now().strftime("%d/%m/%Y")))
-                        conn.commit(); st.rerun()
-            if not df_chi.empty:
-                df_chi['Xóa'] = False
-                ed_cp = st.data_editor(df_chi, column_config={"id": None, "thang_nam": None, "Xóa": st.column_config.CheckboxColumn("🗑")}, hide_index=True, use_container_width=True)
-                if st.button("💾 Cập nhật danh sách chi"):
-                    for _, r in ed_cp.iterrows():
-                        if r['Xóa']: c.execute("DELETE FROM chi_phi WHERE id=?", (r['id'],))
-                        else: c.execute("UPDATE chi_phi SET loai=?, hang_muc=?, so_tien=? WHERE id=?", (r['loai'], r['hang_muc'], int(r['so_tien']), r['id']))
+    if IS_ADMIN:
+        with st.expander("📉 Quản lý Chi phí Tòa nhà"):
+            with st.form("t_cp"):
+                cl = st.selectbox("Loại", ["Tiền Điện Toàn Nhà", "Tiền Nước Toàn Nhà", "Rác", "Net", "Sửa chữa", "Khác"])
+                ch, ct = st.text_input("Ghi chú"), st.number_input("Số tiền", step=50000)
+                if st.form_submit_button("Lưu khoản chi"):
+                    c.execute('''INSERT INTO chi_phi (thang_nam, loai, hang_muc, so_tien, ngay_nhap) VALUES (?,?,?,?,?)''', (thang_tk, cl, ch, int(ct), datetime.now().strftime("%d/%m/%Y")))
                     conn.commit(); st.rerun()
-        else: st.dataframe(df_chi.drop(columns=['id','thang_nam']), use_container_width=True, hide_index=True)
+        if not df_chi.empty:
+            df_chi['Xóa'] = False
+            ed_cp = st.data_editor(df_chi, column_config={"id": None, "thang_nam": None, "Xóa": st.column_config.CheckboxColumn("🗑")}, hide_index=True, use_container_width=True)
+            if st.button("💾 Cập nhật danh sách chi"):
+                for _, r in ed_cp.iterrows():
+                    if r['Xóa']: c.execute("DELETE FROM chi_phi WHERE id=?", (r['id'],))
+                    else: c.execute("UPDATE chi_phi SET loai=?, hang_muc=?, so_tien=? WHERE id=?", (r['loai'], r['hang_muc'], int(r['so_tien']), r['id']))
+                conn.commit(); st.rerun()
 
 # =====================================================================
 # MENU 5: BÁO CÁO TÀI CHÍNH NĂM
 # =====================================================================
 elif menu == "5. Báo Cáo Tài Chính Năm":
     nam_n = st.selectbox("📅 Chọn Năm:", danh_sach_nam, index=danh_sach_nam.index(str(current_year)))
-    tong_thu_nam, tong_chi_nam, data_nam = 0, 0, []
+    
+    y_thu_nha, y_thu_dien, y_thu_nuoc, y_thu_dv = 0, 0, 0, 0
+    y_chi_dien, y_chi_nuoc, y_chi_dv, y_chi_sua, y_chi_khac = 0, 0, 0, 0, 0
+    data_nam_detailed = []
+
     for t in range(1, 13):
         ts = f"{str(t).zfill(2)}/{nam_n}"
-        df_p_n, df_c_n = load_phong(ts), load_chi_phi(ts)
-        thu_t = sum([(r['gia'] + max(0, r['dien_moi']-r['dien_cu'])*GIA_DIEN + max(0, r['nuoc_moi']-r['nuoc_cu'])*GIA_NUOC + r['phi_dich_vu']) for _, r in df_p_n[df_p_n['thanh_toan'] == 'Đã thanh toán'].iterrows()]) if not df_p_n.empty else 0
-        chi_t = df_c_n['so_tien'].sum() if not df_c_n.empty else 0
-        tong_thu_nam += thu_t; tong_chi_nam += chi_t
-        data_nam.append({"Tháng": f"Tháng {t}", "Thu": f"{thu_t:,.0f} đ", "Chi": f"{chi_t:,.0f} đ", "Lãi": f"{(thu_t-chi_t):,.0f} đ"})
+        df_p, df_c = load_phong(ts), load_chi_phi(ts)
+        
+        df_p_paid = df_p[df_p['thanh_toan'] == 'Đã thanh toán']
+        m_thu_nha = df_p_paid['gia'].sum()
+        m_thu_dien = sum([(max(0, r['dien_moi']-r['dien_cu']) * GIA_DIEN) for _, r in df_p_paid.iterrows()])
+        m_thu_nuoc = sum([(max(0, r['nuoc_moi']-r['nuoc_cu']) * GIA_NUOC) for _, r in df_p_paid.iterrows()])
+        m_thu_dv = df_p_paid['phi_dich_vu'].sum()
+        
+        m_chi_dien = df_c[df_c['loai'] == 'Tiền Điện Toàn Nhà']['so_tien'].sum()
+        m_chi_nuoc = df_c[df_c['loai'] == 'Tiền Nước Toàn Nhà']['so_tien'].sum()
+        m_chi_dv = df_c[df_c['loai'].isin(['Rác', 'Net'])]['so_tien'].sum()
+        m_chi_sua = df_c[df_c['loai'] == 'Sửa chữa']['so_tien'].sum()
+        m_chi_khac = df_c[df_c['loai'] == 'Khác']['so_tien'].sum()
+
+        y_thu_nha += m_thu_nha; y_thu_dien += m_thu_dien; y_thu_nuoc += m_thu_nuoc; y_thu_dv += m_thu_dv
+        y_chi_dien += m_chi_dien; y_chi_nuoc += m_chi_nuoc; y_chi_dv += m_chi_dv; y_chi_sua += m_chi_sua; y_chi_khac += m_chi_khac
+        
+        m_total_thu = m_thu_nha + m_thu_dien + m_thu_nuoc + m_thu_dv
+        m_total_chi = m_chi_dien + m_chi_nuoc + m_chi_dv + m_chi_sua + m_chi_khac
+        data_nam_detailed.append({"Tháng": f"Tháng {t}", "Tổng Thu": f"{m_total_thu:,.0f}", "Tổng Chi": f"{m_total_chi:,.0f}", "Lãi ròng": f"{m_total_thu - m_total_chi:,.0f}"})
+
+    total_y_thu = y_thu_nha + y_thu_dien + y_thu_nuoc + y_thu_dv
+    total_y_chi = y_chi_dien + y_chi_nuoc + y_chi_dv + y_chi_sua + y_chi_khac
+    
     c1, c2, c3 = st.columns(3)
-    c1.metric("🌟 TỔNG THU NĂM", f"{tong_thu_nam:,.0f} VNĐ"); c2.metric("🔥 TỔNG CHI NĂM", f"{tong_chi_nam:,.0f} VNĐ"); c3.metric("🎯 LỢI NHUẬN NĂM", f"{(tong_thu_nam - tong_chi_nam):,.0f} VNĐ")
-    st.dataframe(pd.DataFrame(data_nam), use_container_width=True, hide_index=True)
+    c1.metric("🌟 TỔNG THU NĂM", f"{total_y_thu:,.0f} đ"); c2.metric("🔥 TỔNG CHI NĂM", f"{total_y_chi:,.0f} đ"); c3.metric("🎯 LỢI NHUẬN NĂM", f"{total_y_thu - total_y_chi:,.0f} đ")
+
+    st.markdown("---")
+    st.subheader(f"📊 Chi tiết năm {nam_n}")
+    y_compare = [
+        {"Hạng mục": "🏡 Tiền Nhà", "Tổng Thu": f"{y_thu_nha:,.0f}", "Tổng Chi": "-", "Chênh lệch": f"{y_thu_nha:,.0f}"},
+        {"Hạng mục": "⚡ Điện", "Tổng Thu": f"{y_thu_dien:,.0f}", "Tổng Chi": f"{y_chi_dien:,.0f}", "Chênh lệch": f"{y_thu_dien - y_chi_dien:,.0f}"},
+        {"Hạng mục": "💧 Nước", "Tổng Thu": f"{y_thu_nuoc:,.0f}", "Tổng Chi": f"{y_chi_nuoc:,.0f}", "Chênh lệch": f"{y_thu_nuoc - y_chi_nuoc:,.0f}"},
+        {"Hạng mục": "🛠️ Phí DV / Khác", "Tổng Thu": f"{y_thu_dv:,.0f}", "Tổng Chi": f"{y_chi_dv + y_chi_khac:,.0f}", "Chênh lệch": f"{y_thu_dv - (y_chi_dv + y_chi_khac):,.0f}"},
+        {"Hạng mục": "🔨 Sửa chữa", "Tổng Thu": "-", "Tổng Chi": f"{y_chi_sua:,.0f}", "Chênh lệch": f"{-y_chi_sua:,.0f}"},
+    ]
+    st.table(pd.DataFrame(y_compare))
+    st.dataframe(pd.DataFrame(data_nam_detailed), use_container_width=True, hide_index=True)
